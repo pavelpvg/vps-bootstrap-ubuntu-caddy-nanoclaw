@@ -287,7 +287,89 @@ else
 fi
 
 # ==========================================
-# 8. POST-INSTALLATION HEALTH CHECK & CLEANUP
+# 8. CADDY REVERSE PROXY SETUP
+# ==========================================
+echo "===> 8. Настройка и запуск Caddy Reverse Proxy..."
+
+# Атомарное создание каталога сразу с правильными правами
+install -d -m 755 -o "${NEW_USER}" -g "${NEW_USER}" "${CADDY_DIR}"
+
+# 1. Генерируем docker-compose.yml через /dev/stdin (только если не существует)
+if [ ! -f "${CADDY_DIR}/docker-compose.yml" ]; then
+    echo "📝 Создание ${CADDY_DIR}/docker-compose.yml..."
+    install -m 644 -o "${NEW_USER}" -g "${NEW_USER}" /dev/stdin "${CADDY_DIR}/docker-compose.yml" << 'EOF'
+networks:
+  app-network:
+    driver: bridge
+
+services:
+  proxy:
+    image: caddy:2-alpine
+    init: true
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    # RAM-диск для временных файлов Caddy
+    tmpfs:
+      - /tmp:exec,mode=1777,size=128M
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+    networks:
+      - app-network
+
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  caddy_data:
+  caddy_config:
+EOF
+else
+    echo "ℹ️ ${CADDY_DIR}/docker-compose.yml уже существует, пропускаем..."
+fi
+
+# 2. Генерируем базовый Caddyfile через /dev/stdin (только если не существует)
+if [ ! -f "${CADDY_DIR}/Caddyfile" ]; then
+    echo "📝 Создание ${CADDY_DIR}/Caddyfile..."
+    install -m 644 -o "${NEW_USER}" -g "${NEW_USER}" /dev/stdin "${CADDY_DIR}/Caddyfile" << 'EOF'
+# Базовый Caddyfile
+#
+# example.com {
+#     reverse_proxy localhost:3000
+# }
+
+:80 {
+    respond "Caddy is running!" 200
+}
+EOF
+else
+    echo "ℹ️ ${CADDY_DIR}/Caddyfile уже существует, пропускаем..."
+fi
+
+# 3. Пулинг свежего образа, запуск Caddy и проверка статуса
+echo "🚀 Запуск Caddy через Docker Compose..."
+sudo -iu "${NEW_USER}" bash -lc "
+    cd '${CADDY_DIR}'
+    docker compose pull
+    docker compose up -d
+    echo '📊 Статус сервисов Caddy:'
+    docker compose ps
+"
+
+echo "✔ Caddy успешно настроен и запущен!"
+
+# ==========================================
+# 9. POST-INSTALLATION HEALTH CHECK & CLEANUP
 # ==========================================
 echo "===> 8. Проверка статуса сервисов и очистка..."
 
