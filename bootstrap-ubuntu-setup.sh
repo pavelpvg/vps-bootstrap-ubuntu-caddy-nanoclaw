@@ -9,12 +9,15 @@ trap 'rc=$?; echo "❌ ERROR: Ошибка (код $rc) в строке ${BASH_L
 # ==========================================
 # CONFIGURATION
 # ==========================================
-NEW_USER="pavelgg"
+
 APP_DIR="/opt/nanoclaw"
 REPO_URL="https://github.com/nanocoai/nanoclaw.git"
 SWAP_SIZE="2G"
 TMPFS_TMP_SIZE="25%"
 CADDY_DIR="${APP_DIR}/caddy"
+
+read -rp "Домен для NanoClaw (оставьте пустым для работы по IP): " PUBLIC_DOMAIN
+PUBLIC_DOMAIN="$(echo "${PUBLIC_DOMAIN}" | xargs)"
 
 # ==========================================
 # 1. OS, ROOT & NETWORK CHECKS
@@ -43,7 +46,7 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt update -qq && apt upgrade -y
-apt install -y acl curl wget git ufw fail2ban sysstat htop unzip software-properties-common ca-certificates gnupg dbus-user-session
+apt install -y acl caddy curl wget git ufw fail2ban sysstat htop unzip software-properties-common ca-certificates gnupg dbus-user-session
 
 # ==========================================
 # 2. USER CREATION & SSH KEYS SAFETY CHECK
@@ -465,121 +468,117 @@ fi
 # ==========================================
 # 9. CADDY REVERSE PROXY SETUP
 # ==========================================
-echo "===> 9. Настройка и запуск Caddy Reverse Proxy..."
+echo "===> 9. Настройка Caddy Reverse Proxy..."
 
-install -d -m 755 -o "${NEW_USER}" -g "${NEW_USER}" "${CADDY_DIR}"
-
-if [ ! -f "${CADDY_DIR}/docker-compose.yml" ]; then
-    echo "📝 Создание docker-compose.yml..."
-    install -m 644 -o "${NEW_USER}" -g "${NEW_USER}" /dev/stdin "${CADDY_DIR}/docker-compose.yml" <<'EOF'
-services:
-  proxy:
-    image: caddy:2-alpine
-    init: true
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    tmpfs:
-      - /tmp:exec,mode=1777,size=128M
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    healthcheck:
-      test: ["CMD","wget","--spider","-q","http://localhost"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
-volumes:
-  caddy_data:
-  caddy_config:
-EOF
-else
-    echo "ℹ️ docker-compose.yml уже существует, пропускаем."
+if ! command -v caddy >/dev/null 2>&1; then
+    echo "❌ Caddy не установлен." >&2
+    exit 1
 fi
 
+if ! command -v systemctl >/dev/null 2>&1; then
+    echo "❌ systemctl не найден (требуется окружение с systemd)." >&2
+    exit 1
+fi
+
+echo "📦 Подготовка директорий..."
+
+install -d -m 755 \
+    -o "${NEW_USER}" \
+    -g "${NEW_USER}" \
+    "${CADDY_DIR}"
+
 if [ ! -f "${CADDY_DIR}/Caddyfile" ]; then
-    echo "📝 Создание Caddyfile..."
+    echo "📝 Создание шаблона Caddyfile..."
+
     if [ -n "${PUBLIC_DOMAIN:-}" ]; then
-        install -m 644 -o "${NEW_USER}" -g "${NEW_USER}" /dev/stdin "${CADDY_DIR}/Caddyfile" <<EOF
+        install -m 644 \
+            -o "${NEW_USER}" \
+            -g "${NEW_USER}" \
+            /dev/stdin \
+            "${CADDY_DIR}/Caddyfile" <<EOF
 ${PUBLIC_DOMAIN} {
     encode gzip zstd
-    reverse_proxy host.docker.internal:3000
+    reverse_proxy 127.0.0.1:3000
     log
 }
 EOF
     else
-        install -m 644 -o "${NEW_USER}" -g "${NEW_USER}" /dev/stdin "${CADDY_DIR}/Caddyfile" <<'EOF'
+        install -m 644 \
+            -o "${NEW_USER}" \
+            -g "${NEW_USER}" \
+            /dev/stdin \
+            "${CADDY_DIR}/Caddyfile" <<'EOF'
 :80 {
     encode gzip zstd
-    reverse_proxy host.docker.internal:3000
+    reverse_proxy 127.0.0.1:3000
     log
 }
 EOF
     fi
 else
-    echo "ℹ️ Caddyfile уже существует, пропускаем."
+    echo "ℹ️ Шаблон Caddyfile уже существует, пропускаем."
 fi
 
-echo "🚀 Запуск Caddy..."
+echo "📋 Копирование конфигурации в системный путь..."
 
-if ! sudo -iu "${NEW_USER}" \
-    env COMPOSE_PROJECT_NAME=caddy \
-    docker compose -f "${CADDY_DIR}/docker-compose.yml" pull
-then
-    echo "❌ Не удалось скачать образ Caddy." >&2
+install -d -m 755 /etc/caddy
+install -m 644 -o root -g root "${CADDY_DIR}/Caddyfile" /etc/caddy/Caddyfile
+
+echo "📝 Форматирование конфигурации..."
+
+if ! caddy fmt --overwrite /etc/caddy/Caddyfile; then
+    echo "❌ Ошибка форматирования Caddyfile." >&2
     exit 1
 fi
 
-if ! sudo -iu "${NEW_USER}" \
-    env COMPOSE_PROJECT_NAME=caddy \
-    docker compose -f "${CADDY_DIR}/docker-compose.yml" up -d
-then
-    echo "❌ Не удалось запустить Caddy." >&2
+echo "🔍 Проверка конфигурации..."
+
+if ! caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile; then
+    echo "❌ Конфигурация Caddy содержит ошибки." >&2
     exit 1
 fi
 
-echo "⏳ Ожидание готовности Caddy..."
+echo "🚀 Управление сервисом Caddy..."
 
-READY=false
+if systemctl is-active --quiet caddy; then
+    echo "♻ Применение новой конфигурации..."
+    if ! systemctl reload caddy; then
+        echo "❌ Не удалось применить конфигурацию Caddy." >&2
+        systemctl --no-pager --lines=10 status caddy
+        journalctl -u caddy --no-pager --no-hostname -n 50
+        exit 1
+    fi
+else
+    echo "🚀 Запуск Caddy..."
+    if ! systemctl enable --now caddy >/dev/null; then
+        echo "❌ Не удалось запустить Caddy." >&2
+        systemctl --no-pager --lines=10 status caddy
+        journalctl -u caddy --no-pager --no-hostname -n 50
+        exit 1
+    fi
+fi
 
-for i in {1..30}; do
-    if sudo -iu "${NEW_USER}" \
-        env COMPOSE_PROJECT_NAME=caddy \
-        docker compose \
-        -f "${CADDY_DIR}/docker-compose.yml" \
-        ps --format json 2>/dev/null \
-        | grep -q '"Health":"healthy"'
-    then
-        READY=true
+echo "⏳ Ожидание отклика от Caddy..."
+
+CADDY_READY=false
+for i in {1..15}; do
+    if curl --max-time 5 http://127.0.0.1 >/dev/null 2>&1; then
+        CADDY_READY=true
         break
     fi
     sleep 1
 done
 
-if [ "${READY}" != "true" ]; then
-    echo "❌ Caddy не перешёл в состояние healthy." >&2
-
-    sudo -iu "${NEW_USER}" \
-        env COMPOSE_PROJECT_NAME=caddy \
-        docker compose \
-        -f "${CADDY_DIR}/docker-compose.yml" \
-        logs --tail=100
-
+if [ "${CADDY_READY}" != "true" ]; then
+    echo "❌ Caddy запущен, но не отвечает на запросы." >&2
+    systemctl --no-pager --lines=10 status caddy
+    journalctl -u caddy --no-pager --no-hostname -n 50
     exit 1
 fi
 
-sudo -iu "${NEW_USER}" \
-    env COMPOSE_PROJECT_NAME=caddy \
-    docker compose \
-        -f "${CADDY_DIR}/docker-compose.yml" \
-        ps
+systemctl --no-pager --lines=10 status caddy
 
-echo "✔ Caddy успешно настроен и запущен!"
+echo "✔ Caddy успешно установлен и запущен."
 
 if [ -n "${PUBLIC_DOMAIN:-}" ]; then
     echo "🌐 Reverse Proxy: https://${PUBLIC_DOMAIN}"
