@@ -467,41 +467,29 @@ fi
 # ==========================================
 echo "===> 9. Настройка и запуск Caddy Reverse Proxy..."
 
-# Атомарное создание каталога сразу с правильными правами
 install -d -m 755 -o "${NEW_USER}" -g "${NEW_USER}" "${CADDY_DIR}"
 
-# 1. Генерируем docker-compose.yml через /dev/stdin (только если не существует)
 if [ ! -f "${CADDY_DIR}/docker-compose.yml" ]; then
-    echo "📝 Создание ${CADDY_DIR}/docker-compose.yml..."
-    install -m 644 -o "${NEW_USER}" -g "${NEW_USER}" /dev/stdin "${CADDY_DIR}/docker-compose.yml" << 'EOF'
-networks:
-  app-network:
-    driver: bridge
-
+    echo "📝 Создание docker-compose.yml..."
+    install -m 644 -o "${NEW_USER}" -g "${NEW_USER}" /dev/stdin "${CADDY_DIR}/docker-compose.yml" <<'EOF'
 services:
   proxy:
     image: caddy:2-alpine
     init: true
     restart: unless-stopped
-
     ports:
       - "80:80"
       - "443:443"
-
-    # RAM-диск для временных файлов Caddy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     tmpfs:
       - /tmp:exec,mode=1777,size=128M
-
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-
-    networks:
-      - app-network
-
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost"]
+      test: ["CMD","wget","--spider","-q","http://localhost"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -511,35 +499,37 @@ volumes:
   caddy_config:
 EOF
 else
-    echo "ℹ️ ${CADDY_DIR}/docker-compose.yml уже существует, пропускаем..."
+    echo "ℹ️ docker-compose.yml уже существует, пропускаем."
 fi
 
-# 2. Генерируем базовый Caddyfile через /dev/stdin (только если не существует)
 if [ ! -f "${CADDY_DIR}/Caddyfile" ]; then
-    echo "📝 Создание ${CADDY_DIR}/Caddyfile..."
-    install -m 644 -o "${NEW_USER}" -g "${NEW_USER}" /dev/stdin "${CADDY_DIR}/Caddyfile" << 'EOF'
-# Базовый Caddyfile
-#
-# example.com {
-#     reverse_proxy localhost:3000
-# }
-
-:80 {
-    respond "Caddy is running!" 200
+    echo "📝 Создание Caddyfile..."
+    if [ -n "${PUBLIC_DOMAIN:-}" ]; then
+        install -m 644 -o "${NEW_USER}" -g "${NEW_USER}" /dev/stdin "${CADDY_DIR}/Caddyfile" <<EOF
+${PUBLIC_DOMAIN} {
+    encode gzip zstd
+    reverse_proxy host.docker.internal:3000
+    log
 }
 EOF
+    else
+        install -m 644 -o "${NEW_USER}" -g "${NEW_USER}" /dev/stdin "${CADDY_DIR}/Caddyfile" <<'EOF'
+:80 {
+    encode gzip zstd
+    reverse_proxy host.docker.internal:3000
+    log
+}
+EOF
+    fi
 else
-    echo "ℹ️ ${CADDY_DIR}/Caddyfile уже существует, пропускаем..."
+    echo "ℹ️ Caddyfile уже существует, пропускаем."
 fi
 
-# 3. Пулинг свежего образа, запуск Caddy и проверка статуса
-echo "🚀 Запуск Caddy через Docker Compose..."
+echo "🚀 Запуск Caddy..."
 
 if ! sudo -iu "${NEW_USER}" \
     env COMPOSE_PROJECT_NAME=caddy \
-    docker compose \
-        -f "${CADDY_DIR}/docker-compose.yml" \
-        pull
+    docker compose -f "${CADDY_DIR}/docker-compose.yml" pull
 then
     echo "❌ Не удалось скачать образ Caddy." >&2
     exit 1
@@ -547,11 +537,39 @@ fi
 
 if ! sudo -iu "${NEW_USER}" \
     env COMPOSE_PROJECT_NAME=caddy \
-    docker compose \
-        -f "${CADDY_DIR}/docker-compose.yml" \
-        up -d
+    docker compose -f "${CADDY_DIR}/docker-compose.yml" up -d
 then
     echo "❌ Не удалось запустить Caddy." >&2
+    exit 1
+fi
+
+echo "⏳ Ожидание готовности Caddy..."
+
+READY=false
+
+for i in {1..30}; do
+    if sudo -iu "${NEW_USER}" \
+        env COMPOSE_PROJECT_NAME=caddy \
+        docker compose \
+        -f "${CADDY_DIR}/docker-compose.yml" \
+        ps --format json 2>/dev/null \
+        | grep -q '"Health":"healthy"'
+    then
+        READY=true
+        break
+    fi
+    sleep 1
+done
+
+if [ "${READY}" != "true" ]; then
+    echo "❌ Caddy не перешёл в состояние healthy." >&2
+
+    sudo -iu "${NEW_USER}" \
+        env COMPOSE_PROJECT_NAME=caddy \
+        docker compose \
+        -f "${CADDY_DIR}/docker-compose.yml" \
+        logs --tail=100
+
     exit 1
 fi
 
@@ -562,6 +580,12 @@ sudo -iu "${NEW_USER}" \
         ps
 
 echo "✔ Caddy успешно настроен и запущен!"
+
+if [ -n "${PUBLIC_DOMAIN:-}" ]; then
+    echo "🌐 Reverse Proxy: https://${PUBLIC_DOMAIN}"
+else
+    echo "🌐 Reverse Proxy: http://<IP-адрес-сервера>"
+fi
 
 # ==========================================
 # 10. POST-INSTALLATION HEALTH CHECK & CLEANUP
