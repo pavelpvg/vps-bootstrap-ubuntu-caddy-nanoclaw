@@ -43,7 +43,7 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt update -qq && apt upgrade -y
-apt install -y curl wget git ufw fail2ban sysstat htop unzip software-properties-common ca-certificates gnupg dbus-user-session
+apt install -y acl curl wget git ufw fail2ban sysstat htop unzip software-properties-common ca-certificates gnupg dbus-user-session
 
 # ==========================================
 # 2. USER CREATION & SSH KEYS SAFETY CHECK
