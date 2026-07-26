@@ -534,13 +534,32 @@ fi
 
 # 3. Пулинг свежего образа, запуск Caddy и проверка статуса
 echo "🚀 Запуск Caddy через Docker Compose..."
-sudo -iu "${NEW_USER}" bash -lc "
-    cd '${CADDY_DIR}'
-    docker compose pull
-    docker compose up -d
-    echo '📊 Статус сервисов Caddy:'
-    docker compose ps
-"
+
+if ! sudo -iu "${NEW_USER}" \
+    env COMPOSE_PROJECT_NAME=caddy \
+    docker compose \
+        -f "${CADDY_DIR}/docker-compose.yml" \
+        pull
+then
+    echo "❌ Не удалось скачать образ Caddy." >&2
+    exit 1
+fi
+
+if ! sudo -iu "${NEW_USER}" \
+    env COMPOSE_PROJECT_NAME=caddy \
+    docker compose \
+        -f "${CADDY_DIR}/docker-compose.yml" \
+        up -d
+then
+    echo "❌ Не удалось запустить Caddy." >&2
+    exit 1
+fi
+
+sudo -iu "${NEW_USER}" \
+    env COMPOSE_PROJECT_NAME=caddy \
+    docker compose \
+        -f "${CADDY_DIR}/docker-compose.yml" \
+        ps
 
 echo "✔ Caddy успешно настроен и запущен!"
 
