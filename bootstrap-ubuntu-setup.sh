@@ -47,46 +47,109 @@ apt install -y curl wget git ufw fail2ban sysstat htop unzip software-properties
 # ==========================================
 # 2. USER CREATION & SSH KEYS SAFETY CHECK
 # ==========================================
-echo "===> 2. Настройка пользователя ${NEW_USER} и SSH-ключей..."
+echo "===> 2. Настройка пользователя и SSH-ключей..."
 
-# Страховка при запуске через pipe (curl | bash): чтение строго с /dev/tty
+# 1. Интерактивный запрос имени пользователя
+DEFAULT_USER="user"
+read -r -p "👤 Введите имя нового пользователя [по умолчанию: ${DEFAULT_USER}]: " INPUT_USER </dev/tty
+NEW_USER="${INPUT_USER:-$DEFAULT_USER}"
+
+# Валидация синтаксиса имени пользователя (стандарт POSIX/Linux)
+if ! [[ "${NEW_USER}" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+    echo "❌ Ошибка: Имя пользователя '${NEW_USER}' содержит недопустимые символы!" >&2
+    echo "   Имя должно начинаться со строчной буквы или '_' и содержать только [a-z0-9_-]." >&2
+    exit 1
+fi
+
+# Динамическая проверка порога системных UID из /etc/login.defs (по умолчанию 1000)
+SYS_UID_MIN=$(awk '/^UID_MIN/ {print $2}' /etc/login.defs 2>/dev/null || echo "1000")
+
+if getent passwd "${NEW_USER}" >/dev/null 2>&1; then
+    EXISTING_UID=$(id -u "${NEW_USER}")
+    if [ "${EXISTING_UID}" -lt "${SYS_UID_MIN}" ]; then
+        echo "❌ Ошибка: Пользователь '${NEW_USER}' является системным аккаунтом (UID=${EXISTING_UID} < ${SYS_UID_MIN})!" >&2
+        exit 1
+    fi
+    echo "ℹ️ Пользователь ${NEW_USER} уже существует (UID=${EXISTING_UID}). Обновляем настройки..."
+fi
+
+echo "✔ Использовано имя пользователя: ${NEW_USER}"
+
+# 2. Страховка SSH-ключа для root (при запуске через curl | bash)
 if [ ! -s /root/.ssh/authorized_keys ]; then
     echo "⚠️ ВНИМАНИЕ: Файл /root/.ssh/authorized_keys пуст или отсутствует."
-    echo -n "Пожалуйста, вставьте ваш публичный SSH-ключ (ssh-rsa / ssh-ed25519 ...) и нажмите Enter: "
-    mkdir -p /root/.ssh && chmod 700 /root/.ssh
-    read -r PUB_KEY_INPUT </dev/tty
+    install -d -m 700 /root/.ssh
+    read -r -p "Пожалуйста, вставьте ваш публичный SSH-ключ (ssh-rsa / ssh-ed25519 ...): " PUB_KEY_INPUT </dev/tty
+    
+    # Проверка на пустой ввод
+    if [ -z "${PUB_KEY_INPUT}" ]; then
+        echo "❌ Ошибка: Публичный SSH-ключ не может быть пустым!" >&2
+        exit 1
+    fi
+
+    # Валидация формата публичного SSH-ключа: проверяем префикс и минимум 2 поля (тип + ключ)
+    KEY_FIELDS_COUNT=$(printf '%s\n' "${PUB_KEY_INPUT}" | awk '{print NF}')
+    if [ "${KEY_FIELDS_COUNT}" -lt 2 ]; then
+        echo "❌ Ошибка: Некорректный формат SSH-ключа (слишком мало элементов)!" >&2
+        exit 1
+    fi
+
+    case "${PUB_KEY_INPUT}" in
+        ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*\ *|sk-ssh-ed25519@openssh.com\ *|sk-ecdsa-sha2-*\ *)
+            ;;
+        *)
+            echo "❌ Ошибка: Неподдерживаемый тип публичного SSH-ключа!" >&2
+            echo "   Ключ должен начинаться с 'ssh-ed25519', 'ssh-rsa' или 'ecdsa-sha2-*'." >&2
+            exit 1
+            ;;
+    esac
+
     echo "$PUB_KEY_INPUT" > /root/.ssh/authorized_keys
     chmod 600 /root/.ssh/authorized_keys
 fi
 
-# Идемпотентное создание пользователя и установка пароля
-if ! id -u "$NEW_USER" &>/dev/null; then
-    adduser --disabled-password --gecos "" "$NEW_USER"
-    usermod -aG sudo "$NEW_USER"
-    echo "Пользователь ${NEW_USER} успешно создан."
+# 3. Создание пользователя или пропуск создания
+if ! id -u "${NEW_USER}" >/dev/null 2>&1; then
+    echo "👤 Создание учетной записи ${NEW_USER}..."
+    adduser --disabled-password --gecos "" "${NEW_USER}"
     
-    echo "🔑 Задайте пароль для пользователя ${NEW_USER} (будет запрашиваться при выполнении sudo):"
-    passwd "$NEW_USER" </dev/tty
-else
-    echo "Пользователь ${NEW_USER} уже существует. Пропускаем смену пароля."
+    echo "🔑 Задайте пароль для пользователя ${NEW_USER}:"
+    passwd "${NEW_USER}" </dev/tty
 fi
 
-# Безопасное включение lingering для выполнения systemd-user сервисов
-if command -v loginctl >/dev/null 2>&1; then
-    loginctl enable-linger "$NEW_USER" || true
-fi
-
-# Копирование SSH-ключей пользователю через install
-install -d -m 700 -o "${NEW_USER}" -g "${NEW_USER}" "/home/${NEW_USER}/.ssh"
-cp /root/.ssh/authorized_keys "/home/${NEW_USER}/.ssh/authorized_keys"
-chown "${NEW_USER}:${NEW_USER}" "/home/${NEW_USER}/.ssh/authorized_keys"
-chmod 600 "/home/${NEW_USER}/.ssh/authorized_keys"
-
-# Финальная проверка перед отключением входа по паролю
-if [ ! -s "/home/${NEW_USER}/.ssh/authorized_keys" ]; then
-    echo "❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось записать SSH-ключ для ${NEW_USER}!" >&2
-    echo "   Скрипт остановлен для предотвращения потери доступа к серверу." >&2
+# Добавляем в группу sudo и проверяем членство
+usermod -aG sudo "${NEW_USER}"
+if ! id -nG "${NEW_USER}" | grep -qw sudo; then
+    echo "❌ Ошибка: Не удалось добавить пользователя ${NEW_USER} в группу sudo!" >&2
     exit 1
+fi
+
+# 4. Безопасное копирование SSH-ключей и двухфакторная проверка прав чтения
+if [ -s /root/.ssh/authorized_keys ]; then
+    USER_SSH_DIR="/home/${NEW_USER}/.ssh"
+    USER_AUTH_KEYS="${USER_SSH_DIR}/authorized_keys"
+
+    install -d -m 700 -o "${NEW_USER}" -g "${NEW_USER}" "${USER_SSH_DIR}"
+    install -m 600 -o "${NEW_USER}" -g "${NEW_USER}" /root/.ssh/authorized_keys "${USER_AUTH_KEYS}"
+    
+    # ПРОВЕРКА 1: Файл физически скопирован и не пуст
+    if [ ! -s "${USER_AUTH_KEYS}" ]; then
+        echo "❌ Ошибка: SSH-ключ не был скопирован в ${USER_AUTH_KEYS}!" >&2
+        exit 1
+    fi
+
+    # ПРОВЕРКА 2: Новый пользователь гарантированно может прочитать свой SSH-ключ
+    if ! sudo -u "${NEW_USER}" test -r "${USER_AUTH_KEYS}"; then
+        echo "❌ Ошибка: Пользователь ${NEW_USER} не имеет прав на чтение ${USER_AUTH_KEYS}!" >&2
+        exit 1
+    fi
+fi
+
+# 5. Включение linger для systemd-сервисов
+if command -v loginctl >/dev/null 2>&1; then
+    if ! loginctl enable-linger "${NEW_USER}"; then
+        echo "⚠️ Предупреждение: Не удалось включить systemd linger для ${NEW_USER}." >&2
+    fi
 fi
 
 # ==========================================
