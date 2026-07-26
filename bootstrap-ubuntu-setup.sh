@@ -237,40 +237,78 @@ echo "✔ Node.js $(node -v) и pnpm v$(pnpm -v) успешно протести
 # 6. DOCKER ENGINE INSTALLATION
 # ==========================================
 echo "===> 6. Установка и проверка Docker..."
-if ! command -v docker &> /dev/null; then
+
+# Установка Docker при отсутствии
+if ! command -v docker >/dev/null 2>&1; then
     install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+        | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+
     chmod a+r /etc/apt/keyrings/docker.gpg
 
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-      tee /etc/apt/sources.list.d/docker.list > /dev/null
+    cat >/etc/apt/sources.list.d/docker.list <<EOF
+deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable
+EOF
 
     apt update -qq
-    apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    apt install -y \
+        docker-ce \
+        docker-ce-cli \
+        containerd.io \
+        docker-buildx-plugin \
+        docker-compose-plugin
 fi
 
-# Идемпотентное добавление пользователя в группу docker
-id -nG "$NEW_USER" | grep -qw docker || usermod -aG docker "$NEW_USER"
-
+# Гарантируем запуск Docker
 systemctl enable --now docker
 
-# Комплексная проверка готовности Docker API
-echo "Проверка работы Docker Daemon..."
-timeout 15 docker info >/dev/null 2>&1 && timeout 15 docker version >/dev/null 2>&1 || {
-    echo "❌ Ошибка: Служба Docker запущена, но Daemon/API не отвечает!" >&2
-    exit 1
-}
+echo "🔄 Проверка Docker Daemon..."
 
-# Немедленный доступ пользователя к Docker без повторного входа
-if [ -S /var/run/docker.sock ] && command -v setfacl >/dev/null 2>&1; then
-    if ! setfacl -m "u:${NEW_USER}:rw" /var/run/docker.sock; then
-        echo "⚠️ Предупреждение: Не удалось выдать ACL на /var/run/docker.sock."
+if ! timeout 15 docker info >/dev/null 2>&1; then
+    echo "❌ Docker daemon недоступен." >&2
+    exit 1
+fi
+
+if ! timeout 15 docker version >/dev/null 2>&1; then
+    echo "❌ Docker API недоступен." >&2
+    exit 1
+fi
+
+# Добавляем пользователя в docker только если требуется
+if ! id -nG "${NEW_USER}" | grep -qw docker; then
+    echo "➕ Добавление ${NEW_USER} в группу docker..."
+    usermod -aG docker "${NEW_USER}"
+
+    if ! getent group docker | grep -qw "${NEW_USER}"; then
+        echo "❌ Не удалось добавить пользователя ${NEW_USER} в группу docker." >&2
+        exit 1
     fi
 fi
 
-echo "✔ Docker Engine: $(docker version --format '{{.Client.Version}}')"
+# Немедленный доступ к Docker без новой login-сессии
+if command -v setfacl >/dev/null 2>&1 && [ -S /var/run/docker.sock ]; then
+    echo "🔑 Выдача ACL на Docker socket..."
+
+    if setfacl -m "u:${NEW_USER}:rw" /var/run/docker.sock; then
+
+        if sudo -u "${NEW_USER}" test -r /var/run/docker.sock &&
+           sudo -u "${NEW_USER}" test -w /var/run/docker.sock; then
+
+            echo "✔ Пользователь ${NEW_USER} получил доступ к Docker socket."
+
+        else
+            echo "⚠️ ACL установлен, но проверка доступа не пройдена."
+        fi
+
+    else
+        echo "⚠️ Не удалось установить ACL на /var/run/docker.sock."
+    fi
+else
+    echo "⚠️ ACL не применён (нет setfacl или отсутствует docker.sock)."
+fi
+
+echo "✔ Docker Engine : $(docker version --format '{{.Client.Version}}')"
 echo "✔ Docker Compose: $(docker compose version --short)"
 
 # ==========================================
