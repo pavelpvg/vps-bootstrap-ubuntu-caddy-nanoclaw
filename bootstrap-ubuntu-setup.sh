@@ -370,36 +370,48 @@ else
     echo "📥 Клонирование NanoClaw в ${APP_DIR}..."
     git clone --depth 1 "${REPO_URL}" "${APP_DIR}"
     chown -R "${NEW_USER}:${NEW_USER}" "${APP_DIR}"
+fi
+
+# Строгая проверка владельца директории приложения
+if [ "$(stat -c '%U' "${APP_DIR}")" != "${NEW_USER}" ]; then
+    echo "❌ Ошибка: каталог ${APP_DIR} принадлежит не пользователю ${NEW_USER}." >&2
+    exit 1
+fi
+
+# Идемпотентное добавление safe.directory с безопасным подавлением stderr для неинициализированного конфига
+if ! sudo -u "${NEW_USER}" git config --global --get-all safe.directory 2>/dev/null | grep -Fxq "${APP_DIR}"; then
     sudo -u "${NEW_USER}" git config --global --add safe.directory "${APP_DIR}"
 fi
 
-cd "${APP_DIR}"
-
-# Идемпотентная гарантированная установка прав на исполнение
-if [ -f "nanoclaw.sh" ]; then
-    chmod +x "nanoclaw.sh"
-else
-    echo "❌ Ошибка: Файл nanoclaw.sh не найден в ${APP_DIR}!" >&2
+# Проверка существования и установка прав на исполнение по абсолютному пути
+if [ ! -f "${APP_DIR}/nanoclaw.sh" ]; then
+    echo "❌ Ошибка: Файл ${APP_DIR}/nanoclaw.sh не найден!" >&2
     exit 1
 fi
+chmod +x "${APP_DIR}/nanoclaw.sh"
 
 # Вычисляем идентификаторы и подготавливаем переменные окружения
 USER_UID=$(id -u "${NEW_USER}")
 XDG_RUNTIME_DIR="/run/user/${USER_UID}"
 DBUS_SOCKET="${XDG_RUNTIME_DIR}/bus"
 
-# Инициализируем/прогреваем systemd user-manager без блокирующей фатальной проверки
+# Инициализируем/прогреваем systemd user-manager с информативным предупреждением при сбое
 echo "🔄 Инициализация пользовательской systemd-сессии..."
-sudo -iu "${NEW_USER}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR}" systemctl --user daemon-reexec >/dev/null 2>&1 || true
+if ! sudo -iu "${NEW_USER}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR}" systemctl --user daemon-reexec >/dev/null 2>&1; then
+    echo "⚠️ Предупреждение: Не удалось выполнить daemon-reexec для user systemd."
+fi
 
-# Запуск интерактивного скрипта установки NanoClaw
+# Диагностика D-Bus после попытки инициализации (предупреждение, не фатал)
+if [ ! -S "${DBUS_SOCKET}" ]; then
+    echo "⚠️ Предупреждение: Пользовательский D-Bus сокет еще не создан (${DBUS_SOCKET})."
+fi
+
+# Запуск интерактивного скрипта с гарантией правильного рабочего каталога и чистой передачей ENV (без хрупких export внутри)
 echo "🚀 Запуск интерактивного скрипта установки NanoClaw..."
-if ! sudo -iu "${NEW_USER}" bash -lc "
-    export XDG_RUNTIME_DIR='${XDG_RUNTIME_DIR}'
-    export DBUS_SESSION_BUS_ADDRESS='unix:path=${DBUS_SOCKET}'
-    cd '${APP_DIR}'
-    exec ./nanoclaw.sh
-" </dev/tty; then
+if ! sudo -iu "${NEW_USER}" \
+    XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR}" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=${DBUS_SOCKET}" \
+    bash -lc "cd '${APP_DIR}' && exec ./nanoclaw.sh" </dev/tty; then
     echo "❌ Ошибка: Установка NanoClaw завершилась с ошибкой или была отменена." >&2
     exit 1
 fi
