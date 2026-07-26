@@ -49,9 +49,10 @@ apt install -y curl wget git ufw fail2ban sysstat htop unzip software-properties
 # ==========================================
 echo "===> 2. Настройка пользователя и SSH-ключей..."
 
-# 1. Интерактивный запрос имени пользователя
+# 1. Интерактивный запрос имени пользователя (с приглашением на новой строке)
 DEFAULT_USER="user"
-read -r -p "👤 Введите имя нового пользователя [по умолчанию: ${DEFAULT_USER}]: " INPUT_USER </dev/tty
+echo "👤 Введите имя нового пользователя [по умолчанию: ${DEFAULT_USER}]:"
+read -r INPUT_USER </dev/tty
 NEW_USER="${INPUT_USER:-$DEFAULT_USER}"
 
 # Валидация синтаксиса имени пользователя (стандарт POSIX/Linux)
