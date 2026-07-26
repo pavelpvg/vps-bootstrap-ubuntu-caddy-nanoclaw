@@ -369,7 +369,7 @@ elif [ -d "${APP_DIR}" ]; then
     exit 1
 else
     echo "📥 Клонирование NanoClaw в ${APP_DIR}..."
-    git clone --depth 1 "${REPO_URL}" "${APP_DIR}"
+    git clone "${REPO_URL}" "${APP_DIR}"
     chown -R "${NEW_USER}:${NEW_USER}" "${APP_DIR}"
 fi
 
