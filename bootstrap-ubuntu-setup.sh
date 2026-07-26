@@ -293,7 +293,7 @@ case "${UFW_CHOICE:-2}" in
 esac
 
 # ==========================================
-# 8. NANOCLAW INSTALLATION
+# 7. NANOCLAW INSTALLATION
 # ==========================================
 echo "===> 7. Настройка и запуск NanoClaw в ${APP_DIR}..."
 
@@ -307,20 +307,37 @@ else
     echo "📥 Клонирование NanoClaw в ${APP_DIR}..."
     git clone --depth 1 "${REPO_URL}" "${APP_DIR}"
     chown -R "${NEW_USER}:${NEW_USER}" "${APP_DIR}"
+    sudo -u "${NEW_USER}" git config --global --add safe.directory "${APP_DIR}"
 fi
 
 cd "${APP_DIR}"
 
-# Запуск интерактивной установки через полноценный login shell пользователя
+# Идемпотентная гарантированная установка прав на исполнение
 if [ -f "nanoclaw.sh" ]; then
-    echo "🚀 Запуск интерактивного скрипта установки NanoClaw..."
-    chmod +x nanoclaw.sh
-    if ! sudo -iu "${NEW_USER}" bash -lc "cd ${APP_DIR} && ./nanoclaw.sh" </dev/tty; then
-        echo "❌ Ошибка: Установка NanoClaw завершилась с ошибкой или была отменена." >&2
-        exit 1
-    fi
+    chmod +x "nanoclaw.sh"
 else
     echo "❌ Ошибка: Файл nanoclaw.sh не найден в ${APP_DIR}!" >&2
+    exit 1
+fi
+
+# Вычисляем идентификаторы и подготавливаем переменные окружения
+USER_UID=$(id -u "${NEW_USER}")
+XDG_RUNTIME_DIR="/run/user/${USER_UID}"
+DBUS_SOCKET="${XDG_RUNTIME_DIR}/bus"
+
+# Инициализируем/прогреваем systemd user-manager без блокирующей фатальной проверки
+echo "🔄 Инициализация пользовательской systemd-сессии..."
+sudo -iu "${NEW_USER}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR}" systemctl --user daemon-reexec >/dev/null 2>&1 || true
+
+# Запуск интерактивного скрипта установки NanoClaw
+echo "🚀 Запуск интерактивного скрипта установки NanoClaw..."
+if ! sudo -iu "${NEW_USER}" bash -lc "
+    export XDG_RUNTIME_DIR='${XDG_RUNTIME_DIR}'
+    export DBUS_SESSION_BUS_ADDRESS='unix:path=${DBUS_SOCKET}'
+    cd '${APP_DIR}'
+    exec ./nanoclaw.sh
+" </dev/tty; then
+    echo "❌ Ошибка: Установка NanoClaw завершилась с ошибкой или была отменена." >&2
     exit 1
 fi
 
