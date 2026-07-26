@@ -233,7 +233,6 @@ fi
 
 echo "✔ Node.js $(node -v) и pnpm v$(pnpm -v) успешно протестированы и готовы к работе."
 
-
 # ==========================================
 # 6. DOCKER ENGINE INSTALLATION
 # ==========================================
@@ -263,6 +262,13 @@ timeout 15 docker info >/dev/null 2>&1 && timeout 15 docker version >/dev/null 2
     echo "❌ Ошибка: Служба Docker запущена, но Daemon/API не отвечает!" >&2
     exit 1
 }
+
+# Немедленный доступ пользователя к Docker без повторного входа
+if [ -S /var/run/docker.sock ] && command -v setfacl >/dev/null 2>&1; then
+    if ! setfacl -m "u:${NEW_USER}:rw" /var/run/docker.sock; then
+        echo "⚠️ Предупреждение: Не удалось выдать ACL на /var/run/docker.sock."
+    fi
+fi
 
 echo "✔ Docker Engine: $(docker version --format '{{.Client.Version}}')"
 echo "✔ Docker Compose: $(docker compose version --short)"
