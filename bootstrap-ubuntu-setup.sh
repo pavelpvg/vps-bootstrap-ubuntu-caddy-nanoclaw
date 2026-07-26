@@ -132,7 +132,45 @@ mountpoint -q /tmp || mount /tmp
 chmod 1777 /tmp
 
 # ==========================================
-# 5. DOCKER ENGINE INSTALLATION
+# 5. NODE.JS 20 & PNPM (COREPACK PINNED)
+# ==========================================
+echo "===> 5. Установка и проверка Node.js 20 и pnpm..."
+
+PNPM_VERSION="10"
+NODE_MAJOR="$(node -v 2>/dev/null | cut -d. -f1 | tr -d 'v' || echo 0)"
+
+if [ "$NODE_MAJOR" -ne 20 ]; then
+    echo "📥 Скачивание и установка Node.js 20.x..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+    bash /tmp/nodesource_setup.sh
+    rm -f /tmp/nodesource_setup.sh
+
+    apt install -y nodejs
+else
+    echo "ℹ️ Node.js 20 уже установлен ($(node -v)). Пропускаем скачивание."
+fi
+
+# Проверка наличия Corepack перед активацией
+if ! command -v corepack >/dev/null 2>&1; then
+    echo "❌ Ошибка: Corepack отсутствует в текущей сборке Node.js." >&2
+    exit 1
+fi
+
+# Активируем Corepack с фиксированной мажорной версией pnpm
+corepack enable
+corepack prepare "pnpm@${PNPM_VERSION}" --activate
+
+# Проверка физической работоспособности бинарников
+if ! node -v >/dev/null 2>&1 || ! pnpm -v >/dev/null 2>&1; then
+    echo "❌ Ошибка: Бинарники Node.js или pnpm повреждены или не запускаются!" >&2
+    exit 1
+fi
+
+echo "✔ Node.js $(node -v) и pnpm v$(pnpm -v) успешно протестированы и готовы к работе."
+
+
+# ==========================================
+# 6. DOCKER ENGINE INSTALLATION
 # ==========================================
 echo "===> 5. Установка и проверка Docker..."
 if ! command -v docker &> /dev/null; then
@@ -165,7 +203,7 @@ echo "✔ Docker Engine: $(docker version --format '{{.Client.Version}}')"
 echo "✔ Docker Compose: $(docker compose version --short)"
 
 # ==========================================
-# 6. HARDENING: SSH, FIREWALL, FAIL2BAN
+# 7. HARDENING: SSH, FIREWALL, FAIL2BAN
 # ==========================================
 echo "===> 6. Настройка безопасности (SSH, UFW, Fail2ban)..."
 
@@ -255,7 +293,7 @@ case "${UFW_CHOICE:-2}" in
 esac
 
 # ==========================================
-# 7. NANOCLAW INSTALLATION
+# 8. NANOCLAW INSTALLATION
 # ==========================================
 echo "===> 7. Настройка и запуск NanoClaw в ${APP_DIR}..."
 
@@ -287,7 +325,7 @@ else
 fi
 
 # ==========================================
-# 8. CADDY REVERSE PROXY SETUP
+# 9. CADDY REVERSE PROXY SETUP
 # ==========================================
 echo "===> 8. Настройка и запуск Caddy Reverse Proxy..."
 
@@ -369,7 +407,7 @@ sudo -iu "${NEW_USER}" bash -lc "
 echo "✔ Caddy успешно настроен и запущен!"
 
 # ==========================================
-# 9. POST-INSTALLATION HEALTH CHECK & CLEANUP
+# 10. POST-INSTALLATION HEALTH CHECK & CLEANUP
 # ==========================================
 echo "===> 8. Проверка статуса сервисов и очистка..."
 
