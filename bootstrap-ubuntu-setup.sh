@@ -436,12 +436,6 @@ if [ ! -f "${APP_DIR}/nanoclaw.sh" ]; then
 fi
 chmod +x "${APP_DIR}/nanoclaw.sh"
 
-# Гарантируем наличие пакета acl для корректной выдачи прав на docker.sock через setfacl
-if ! dpkg -l | grep -qw acl; then
-    echo "📦 Установка пакета acl для управления правами Docker-сокета..."
-    apt update && apt install -y acl
-fi
-
 # Вычисляем идентификаторы и подготавливаем переменные окружения
 USER_UID=$(id -u "${NEW_USER}")
 XDG_RUNTIME_DIR="/run/user/${USER_UID}"
