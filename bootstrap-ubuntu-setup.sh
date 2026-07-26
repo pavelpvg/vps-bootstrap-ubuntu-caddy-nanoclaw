@@ -235,7 +235,7 @@ echo "✔ Node.js $(node -v) и pnpm v$(pnpm -v) успешно протести
 # ==========================================
 # 6. DOCKER ENGINE INSTALLATION
 # ==========================================
-echo "===> 5. Установка и проверка Docker..."
+echo "===> 6. Установка и проверка Docker..."
 if ! command -v docker &> /dev/null; then
     install -m 0755 -d /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
@@ -268,7 +268,7 @@ echo "✔ Docker Compose: $(docker compose version --short)"
 # ==========================================
 # 7. HARDENING: SSH, FIREWALL, FAIL2BAN
 # ==========================================
-echo "===> 6. Настройка безопасности (SSH, UFW, Fail2ban)..."
+echo "===> 7. Настройка безопасности (SSH, UFW, Fail2ban)..."
 
 # Бескомпромиссный drop-in файл настроек SSH
 SSHD_CUSTOM_CONFIG="/etc/ssh/sshd_config.d/99-bootstrap.conf"
@@ -356,9 +356,9 @@ case "${UFW_CHOICE:-2}" in
 esac
 
 # ==========================================
-# 7. NANOCLAW INSTALLATION
+# 8. NANOCLAW INSTALLATION
 # ==========================================
-echo "===> 7. Настройка и запуск NanoClaw в ${APP_DIR}..."
+echo "===> 8. Настройка и запуск NanoClaw в ${APP_DIR}..."
 
 if [ -d "${APP_DIR}/.git" ]; then
     echo "ℹ️ Репозиторий NanoClaw уже существует в ${APP_DIR}. Пропускаем клонирование."
@@ -407,7 +407,7 @@ fi
 # ==========================================
 # 9. CADDY REVERSE PROXY SETUP
 # ==========================================
-echo "===> 8. Настройка и запуск Caddy Reverse Proxy..."
+echo "===> 9. Настройка и запуск Caddy Reverse Proxy..."
 
 # Атомарное создание каталога сразу с правильными правами
 install -d -m 755 -o "${NEW_USER}" -g "${NEW_USER}" "${CADDY_DIR}"
@@ -489,7 +489,7 @@ echo "✔ Caddy успешно настроен и запущен!"
 # ==========================================
 # 10. POST-INSTALLATION HEALTH CHECK & CLEANUP
 # ==========================================
-echo "===> 8. Проверка статуса сервисов и очистка..."
+echo "===> 10. Проверка статуса сервисов и очистка..."
 
 apt autoremove -y && apt autoclean
 
