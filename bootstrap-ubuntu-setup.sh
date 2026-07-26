@@ -14,6 +14,7 @@ APP_DIR="/opt/nanoclaw"
 REPO_URL="https://github.com/nanocoai/nanoclaw.git"
 SWAP_SIZE="2G"
 TMPFS_TMP_SIZE="25%"
+CADDY_DIR="${APP_DIR}/caddy"
 
 # ==========================================
 # 1. OS, ROOT & NETWORK CHECKS
