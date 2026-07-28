@@ -185,21 +185,9 @@ EOF
 sysctl --system &>/dev/null
 
 # ==========================================
-# 4. TMPFS (RAM-DISK FOR /tmp)
+# 4. NODE.JS 20 & PNPM (COREPACK PINNED)
 # ==========================================
-echo "===> 4. Настройка RAM-диска для /tmp..."
-
-if ! grep -q "tmpfs /tmp " /etc/fstab; then
-    echo "tmpfs /tmp tmpfs defaults,noatime,mode=1777,size=${TMPFS_TMP_SIZE} 0 0" >> /etc/fstab
-fi
-
-mountpoint -q /tmp || mount /tmp
-chmod 1777 /tmp
-
-# ==========================================
-# 5. NODE.JS 20 & PNPM (COREPACK PINNED)
-# ==========================================
-echo "===> 5. Установка и проверка Node.js 20 и pnpm..."
+echo "===> 4. Установка и проверка Node.js 20 и pnpm..."
 
 PNPM_VERSION="10"
 NODE_MAJOR="$(node -v 2>/dev/null | cut -d. -f1 | tr -d 'v' || echo 0)"
@@ -234,9 +222,9 @@ fi
 echo "✔ Node.js $(node -v) и pnpm v$(pnpm -v) успешно протестированы и готовы к работе."
 
 # ==========================================
-# 6. DOCKER ENGINE INSTALLATION
+# 5. DOCKER ENGINE INSTALLATION
 # ==========================================
-echo "===> 6. Установка и проверка Docker..."
+echo "===> 5. Установка и проверка Docker..."
 
 # Установка Docker при отсутствии
 if ! command -v docker >/dev/null 2>&1; then
@@ -312,9 +300,9 @@ echo "✔ Docker Engine : $(docker version --format '{{.Client.Version}}')"
 echo "✔ Docker Compose: $(docker compose version --short)"
 
 # ==========================================
-# 7. HARDENING: SSH, FIREWALL, FAIL2BAN
+# 6. HARDENING: SSH, FIREWALL, FAIL2BAN
 # ==========================================
-echo "===> 7. Настройка безопасности (SSH, UFW, Fail2ban)..."
+echo "===> 6. Настройка безопасности (SSH, UFW, Fail2ban)..."
 
 # Бескомпромиссный drop-in файл настроек SSH
 SSHD_CUSTOM_CONFIG="/etc/ssh/sshd_config.d/99-bootstrap.conf"
@@ -402,9 +390,9 @@ case "${UFW_CHOICE:-2}" in
 esac
 
 # ==========================================
-# 8. NANOCLAW INSTALLATION
+# 7. NANOCLAW INSTALLATION
 # ==========================================
-echo "===> 8. Настройка и запуск NanoClaw в ${APP_DIR}..."
+echo "===> 7. Настройка и запуск NanoClaw в ${APP_DIR}..."
 
 if [ -d "${APP_DIR}/.git" ]; then
     echo "ℹ️ Репозиторий NanoClaw уже существует в ${APP_DIR}. Пропускаем клонирование."
@@ -463,9 +451,9 @@ if ! sudo -iu "${NEW_USER}" \
 fi
 
 # ==========================================
-# 9. CADDY REVERSE PROXY SETUP
+# 8. CADDY REVERSE PROXY SETUP
 # ==========================================
-echo "===> 9. Настройка Caddy Reverse Proxy..."
+echo "===> 8. Настройка Caddy Reverse Proxy..."
 
 if ! command -v caddy >/dev/null 2>&1; then
     echo "❌ Caddy не установлен." >&2
@@ -591,9 +579,9 @@ else
 fi
 
 # ==========================================
-# 10. POST-INSTALLATION HEALTH CHECK & CLEANUP
+# 9. POST-INSTALLATION HEALTH CHECK & CLEANUP
 # ==========================================
-echo "===> 10. Проверка статуса сервисов и очистка..."
+echo "===> 9. Проверка статуса сервисов и очистка..."
 
 apt autoremove -y && apt autoclean
 
