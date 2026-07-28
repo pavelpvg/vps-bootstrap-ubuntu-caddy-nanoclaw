@@ -590,9 +590,11 @@ systemctl --no-pager --lines=10 status caddy
 echo "✔ Caddy успешно установлен и запущен."
 
 if [ -n "${PUBLIC_DOMAIN:-}" ]; then
-    echo "🌐 Reverse Proxy: https://${PUBLIC_DOMAIN}"
+    echo "🌐 Reverse Proxy: https://${PUBLIC_DOMAIN}/webhook/telegram"
+    echo "ℹ️  Убедитесь, что DNS-запись ${PUBLIC_DOMAIN} уже указывает на этот сервер."
 else
     echo "🌐 Reverse Proxy: http://<IP-адрес-сервера>"
+    echo "ℹ️  Для автоматического HTTPS повторно запустите установку и укажите домен."
 fi
 
 # ==========================================
