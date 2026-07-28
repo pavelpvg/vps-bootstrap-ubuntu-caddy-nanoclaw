@@ -16,9 +16,6 @@ SWAP_SIZE="2G"
 TMPFS_TMP_SIZE="25%"
 CADDY_DIR="${APP_DIR}/caddy"
 
-read -rp "Домен для NanoClaw (оставьте пустым для работы по IP): " PUBLIC_DOMAIN
-PUBLIC_DOMAIN="$(echo "${PUBLIC_DOMAIN}" | xargs)"
-
 # ==========================================
 # 1. OS, ROOT & NETWORK CHECKS
 # ==========================================
@@ -487,36 +484,36 @@ install -d -m 755 \
     -g "${NEW_USER}" \
     "${CADDY_DIR}"
 
-if [ ! -f "${CADDY_DIR}/Caddyfile" ]; then
-    echo "📝 Создание шаблона Caddyfile..."
+read -rp "Домен для NanoClaw (оставьте пустым для работы по IP): " PUBLIC_DOMAIN
+PUBLIC_DOMAIN="$(printf '%s' "${PUBLIC_DOMAIN}" | xargs)"
 
-    if [ -n "${PUBLIC_DOMAIN:-}" ]; then
-        install -m 644 \
-            -o "${NEW_USER}" \
-            -g "${NEW_USER}" \
-            /dev/stdin \
-            "${CADDY_DIR}/Caddyfile" <<EOF
+
+echo "📝 Создание шаблона Caddyfile..."
+
+if [ -n "${PUBLIC_DOMAIN:-}" ]; then
+    install -m 644 \
+        -o "${NEW_USER}" \
+        -g "${NEW_USER}" \
+        /dev/stdin \
+        "${CADDY_DIR}/Caddyfile" <<EOF
 ${PUBLIC_DOMAIN} {
     encode gzip zstd
     reverse_proxy 127.0.0.1:3000
     log
 }
 EOF
-    else
-        install -m 644 \
-            -o "${NEW_USER}" \
-            -g "${NEW_USER}" \
-            /dev/stdin \
-            "${CADDY_DIR}/Caddyfile" <<'EOF'
+else
+    install -m 644 \
+        -o "${NEW_USER}" \
+        -g "${NEW_USER}" \
+        /dev/stdin \
+        "${CADDY_DIR}/Caddyfile" <<'EOF'
 :80 {
     encode gzip zstd
     reverse_proxy 127.0.0.1:3000
     log
 }
 EOF
-    fi
-else
-    echo "ℹ️ Шаблон Caddyfile уже существует, пропускаем."
 fi
 
 echo "📋 Копирование конфигурации в системный путь..."
