@@ -459,6 +459,8 @@ if [ -z "${PUBLIC_DOMAIN:-}" ]; then
     PUBLIC_DOMAIN="$(printf '%s' "${PUBLIC_DOMAIN}" | xargs)"
 fi
 
+echo "✔ Используется домен: ${PUBLIC_DOMAIN:-<IP>}"
+
 echo "===> 8. Настройка Caddy Reverse Proxy..."
 
 if ! command -v caddy >/dev/null 2>&1; then
