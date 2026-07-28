@@ -453,14 +453,6 @@ fi
 # ==========================================
 # 8. CADDY REVERSE PROXY SETUP
 # ==========================================
-
-if [ -z "${PUBLIC_DOMAIN:-}" ]; then
-    read -rp "Домен для NanoClaw (оставьте пустым для работы по IP): " PUBLIC_DOMAIN
-    PUBLIC_DOMAIN="$(printf '%s' "${PUBLIC_DOMAIN}" | xargs)"
-fi
-
-echo "✔ Используется домен: ${PUBLIC_DOMAIN:-<IP>}"
-
 echo "===> 8. Настройка Caddy Reverse Proxy..."
 
 if ! command -v caddy >/dev/null 2>&1; then
@@ -480,10 +472,14 @@ install -d -m 755 \
     -g "${NEW_USER}" \
     "${CADDY_DIR}"
 
+stty sane 2>/dev/null || true
+
 if [ -z "${PUBLIC_DOMAIN:-}" ]; then
     read -rp "Домен для NanoClaw (оставьте пустым для работы по IP): " PUBLIC_DOMAIN
+    IFS= read -r PUBLIC_DOMAIN </dev/tty
     PUBLIC_DOMAIN="$(printf '%s' "${PUBLIC_DOMAIN}" | xargs)"
 fi
+echo "✔ Используется домен: ${PUBLIC_DOMAIN:-<IP>}"
 
 echo "📝 Создание шаблона Caddyfile..."
 
