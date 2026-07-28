@@ -554,15 +554,6 @@ else
     fi
 fi
 
-if systemctl is-active --quiet caddy; then
-    echo "♻ Перезапуск Caddy..."
-    systemctl restart caddy
-else
-    echo "🚀 Запуск Caddy..."
-    systemctl start caddy
-fi
-
-
 echo "⏳ Ожидание отклика от Caddy..."
 
 CADDY_READY=false
