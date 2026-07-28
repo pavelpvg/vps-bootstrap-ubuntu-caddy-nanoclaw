@@ -475,8 +475,8 @@ install -d -m 755 \
 stty sane 2>/dev/null || true
 
 if [ -z "${PUBLIC_DOMAIN:-}" ]; then
-    read -rp "Домен для NanoClaw (оставьте пустым для работы по IP): " PUBLIC_DOMAIN
     IFS= read -r PUBLIC_DOMAIN </dev/tty
+    read -rp "Домен для NanoClaw (оставьте пустым для работы по IP): " PUBLIC_DOMAIN
     PUBLIC_DOMAIN="$(printf '%s' "${PUBLIC_DOMAIN}" | xargs)"
 fi
 echo "✔ Используется домен: ${PUBLIC_DOMAIN:-<IP>}"
