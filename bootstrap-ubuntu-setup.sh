@@ -484,9 +484,10 @@ install -d -m 755 \
     -g "${NEW_USER}" \
     "${CADDY_DIR}"
 
-read -rp "Домен для NanoClaw (оставьте пустым для работы по IP): " PUBLIC_DOMAIN
-PUBLIC_DOMAIN="$(printf '%s' "${PUBLIC_DOMAIN}" | xargs)"
-
+if [ -z "${PUBLIC_DOMAIN:-}" ]; then
+    read -rp "Домен для NanoClaw (оставьте пустым для работы по IP): " PUBLIC_DOMAIN
+    PUBLIC_DOMAIN="$(printf '%s' "${PUBLIC_DOMAIN}" | xargs)"
+fi
 
 echo "📝 Создание шаблона Caddyfile..."
 
@@ -516,21 +517,27 @@ else
 EOF
 fi
 
-echo "📋 Копирование конфигурации в системный путь..."
+echo "📋 Настройка системной конфигурации Caddy..."
 
 install -d -m 755 /etc/caddy
-install -m 644 -o root -g root "${CADDY_DIR}/Caddyfile" /etc/caddy/Caddyfile
+
+ln -sfn "${CADDY_DIR}/Caddyfile" /etc/caddy/Caddyfile
+
+if [ "$(readlink -f /etc/caddy/Caddyfile)" != "${CADDY_DIR}/Caddyfile" ]; then
+    echo "❌ Символическая ссылка /etc/caddy/Caddyfile настроена неверно." >&2
+    exit 1
+fi
 
 echo "📝 Форматирование конфигурации..."
 
-if ! caddy fmt --overwrite /etc/caddy/Caddyfile; then
+if ! caddy fmt --overwrite "${CADDY_DIR}/Caddyfile"; then
     echo "❌ Ошибка форматирования Caddyfile." >&2
     exit 1
 fi
 
 echo "🔍 Проверка конфигурации..."
 
-if ! caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile; then
+if ! caddy validate --adapter caddyfile --config "${CADDY_DIR}/Caddyfile"; then
     echo "❌ Конфигурация Caddy содержит ошибки." >&2
     exit 1
 fi
