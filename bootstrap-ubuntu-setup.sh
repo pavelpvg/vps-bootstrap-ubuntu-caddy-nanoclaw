@@ -453,6 +453,12 @@ fi
 # ==========================================
 # 8. CADDY REVERSE PROXY SETUP
 # ==========================================
+
+if [ -z "${PUBLIC_DOMAIN:-}" ]; then
+    read -rp "Домен для NanoClaw (оставьте пустым для работы по IP): " PUBLIC_DOMAIN
+    PUBLIC_DOMAIN="$(printf '%s' "${PUBLIC_DOMAIN}" | xargs)"
+fi
+
 echo "===> 8. Настройка Caddy Reverse Proxy..."
 
 if ! command -v caddy >/dev/null 2>&1; then
