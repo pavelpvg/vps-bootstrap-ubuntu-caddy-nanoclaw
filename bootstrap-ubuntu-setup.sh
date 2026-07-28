@@ -533,9 +533,9 @@ fi
 echo "🚀 Управление сервисом Caddy..."
 
 if systemctl is-active --quiet caddy; then
-    echo "♻ Применение новой конфигурации..."
-    if ! systemctl reload caddy; then
-        echo "❌ Не удалось применить конфигурацию Caddy." >&2
+    echo "♻ Перезапуск Caddy..."
+    if ! systemctl restart caddy; then
+        echo "❌ Не удалось перезапустить Caddy." >&2
         systemctl --no-pager --lines=10 status caddy
         journalctl -u caddy --no-pager --no-hostname -n 50
         exit 1
@@ -549,6 +549,15 @@ else
         exit 1
     fi
 fi
+
+if systemctl is-active --quiet caddy; then
+    echo "♻ Перезапуск Caddy..."
+    systemctl restart caddy
+else
+    echo "🚀 Запуск Caddy..."
+    systemctl start caddy
+fi
+
 
 echo "⏳ Ожидание отклика от Caddy..."
 
