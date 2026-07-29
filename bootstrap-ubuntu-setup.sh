@@ -185,22 +185,22 @@ EOF
 sysctl --system &>/dev/null
 
 # ==========================================
-# 4. NODE.JS 20 & PNPM (COREPACK PINNED)
+# 4. NODE.JS 22 & PNPM (COREPACK PINNED)
 # ==========================================
 echo "===> 4. Установка и проверка Node.js 20 и pnpm..."
 
 PNPM_VERSION="10"
 NODE_MAJOR="$(node -v 2>/dev/null | cut -d. -f1 | tr -d 'v' || echo 0)"
 
-if [ "$NODE_MAJOR" -ne 20 ]; then
-    echo "📥 Скачивание и установка Node.js 20.x..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+if [ "$NODE_MAJOR" -ne 22 ]; then
+    echo "📥 Скачивание и установка Node.js 22.x..."
+    curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
     bash /tmp/nodesource_setup.sh
     rm -f /tmp/nodesource_setup.sh
 
     apt install -y nodejs
 else
-    echo "ℹ️ Node.js 20 уже установлен ($(node -v)). Пропускаем скачивание."
+    echo "ℹ️ Node.js 22 уже установлен ($(node -v)). Пропускаем скачивание."
 fi
 
 # Проверка наличия Corepack перед активацией
